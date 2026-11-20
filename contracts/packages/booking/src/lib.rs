@@ -127,9 +127,9 @@ impl BookingContract {
         BookingStorage::set_receipt_contract(&env, &receipt_contract);
     }
 
-    // Initialize booking - starts in "pending" status until paid
+    // Initialize booking with idempotency key support - starts in "pending" status until paid
     #[allow(clippy::too_many_arguments)]
-    pub fn create_booking(
+    pub fn create_booking_with_key(
         env: Env,
         passenger: Address,
         airline: Address,
@@ -139,14 +139,20 @@ impl BookingContract {
         departure_time: u64,
         price: i128,
         token: Address,
+        idempotency_key: Symbol,
     ) -> u64 {
         passenger.require_auth();
+
+        let id_key = (symbol_short!("idem"), passenger.clone(), idempotency_key.clone());
+        if let Some(existing_id) = env.storage().persistent().get::<_, u64>(&id_key) {
+            return existing_id;
+        }
 
         let booking_id = BookingStorage::next_id(&env);
 
         let booking = Booking {
             booking_id,
-            passenger,
+            passenger: passenger.clone(),
             airline,
             flight_number,
             from_airport,
@@ -160,8 +166,8 @@ impl BookingContract {
         };
 
         BookingStorage::set(&env, booking_id, &booking);
+        env.storage().persistent().set(&id_key, &booking_id);
 
-        // Canonical schema: (actor, timestamp, primary_id, ...payload)
         contract_events::emit(
             &env,
             Domain::Booking,
@@ -177,6 +183,32 @@ impl BookingContract {
         );
 
         booking_id
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_booking(
+        env: Env,
+        passenger: Address,
+        airline: Address,
+        flight_number: Symbol,
+        from_airport: Symbol,
+        to_airport: Symbol,
+        departure_time: u64,
+        price: i128,
+        token: Address,
+    ) -> u64 {
+        Self::create_booking_with_key(
+            env,
+            passenger,
+            airline,
+            flight_number,
+            from_airport,
+            to_airport,
+            departure_time,
+            price,
+            token,
+            symbol_short!("default"),
+        )
     }
 
     // Accept payment for the booking and hold in escrow

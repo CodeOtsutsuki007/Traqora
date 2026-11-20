@@ -87,3 +87,53 @@ fn test_refund_flow() {
     assert_eq!(booking.status, Symbol::new(&env, "refunded"));
     assert_eq!(booking.amount_escrowed, 0);
 }
+
+#[test]
+fn test_booking_idempotency_same_key_returns_existing()
+{
+    let env = new_env();
+    let actors = generate_actors(&env);
+    let contracts = register_contracts(&env);
+    initialize_token(&env, &contracts.token, &actors.admin);
+
+    let price = 100_0000000i128;
+    let idem_key = Symbol::new(&env, "key123");
+
+    let booking_id_1 = contracts.booking.create_booking_with_key(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &idem_key,
+    );
+
+    let booking_id_2 = contracts.booking.create_booking_with_key(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &idem_key,
+    );
+
+    assert_eq!(booking_id_1, booking_id_2);
+
+    // Verify only one booking exists and is pending
+    let booking = contracts.booking.get_booking(&booking_id_1).unwrap();
+    assert_eq!(booking.status, Symbol::new(&env, "pending"));
+
+    // Pay once and ensure second payment on duplicate/same booking is rejected as expected
+    contracts.token.mint(&actors.admin, &actors.passenger, &price);
+    contracts.booking.pay_for_booking(&booking_id_1);
+
+    let confirmed_booking = contracts.booking.get_booking(&booking_id_1).unwrap();
+    assert_eq!(confirmed_booking.status, Symbol::new(&env, "confirmed"));
+    assert_eq!(confirmed_booking.amount_escrowed, price);
+}
