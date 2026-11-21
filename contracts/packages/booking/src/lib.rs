@@ -127,7 +127,7 @@ impl BookingContract {
         BookingStorage::set_receipt_contract(&env, &receipt_contract);
     }
 
-    // Initialize booking - starts in "pending" status until paid
+    // Initialize booking - starts in "pending" status until paid with idempotency key
     #[allow(clippy::too_many_arguments)]
     pub fn create_booking(
         env: Env,
@@ -139,10 +139,17 @@ impl BookingContract {
         departure_time: u64,
         price: i128,
         token: Address,
+        idempotency_key: Symbol,
     ) -> u64 {
         passenger.require_auth();
 
+        let idem_storage_key = (symbol_short!("idem"), passenger.clone(), idempotency_key);
+        if let Some(existing_id) = env.storage().persistent().get::<_, u64>(&idem_storage_key) {
+            return existing_id;
+        }
+
         let booking_id = BookingStorage::next_id(&env);
+        env.storage().persistent().set(&idem_storage_key, &booking_id);
 
         let booking = Booking {
             booking_id,

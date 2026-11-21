@@ -42,9 +42,15 @@ impl FlightBookingContract {
         flight_id: Symbol,
         seat: Symbol,
         amount: i128,
+        idempotency_key: Symbol,
     ) -> u64 {
         passenger.require_auth();
         assert!(amount > 0, "Invalid amount");
+
+        let idem_key = (symbol_short!("idem"), passenger.clone(), idempotency_key);
+        if let Some(existing_id) = env.storage().persistent().get::<_, u64>(&idem_key) {
+            return existing_id;
+        }
 
         let seat_key = (symbol_short!("seat"), flight_id.clone(), seat.clone());
         if env.storage().persistent().has(&seat_key) {
@@ -72,6 +78,9 @@ impl FlightBookingContract {
         env.storage()
             .instance()
             .set(&DataKey::NextId, &(booking_id + 1));
+        env.storage()
+            .persistent()
+            .set(&idem_key, &booking_id);
 
         contract_events::emit(
             &env,

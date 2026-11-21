@@ -338,3 +338,24 @@ fn test_flight_booking_reconcile_reference_timeout_recovery() {
     let id2 = client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
     assert_eq!(id1, id2);
 }
+
+#[test]
+fn test_flight_booking_idempotent_creation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let passenger = Address::generate(&env);
+    let contract_id = env.register(FlightBookingContract, ());
+    let client = FlightBookingContractClient::new(&env, &contract_id);
+
+    let flight_id = Symbol::new(&env, "FLIDEM");
+    let seat = Symbol::new(&env, "20A");
+    let idem_key = Symbol::new(&env, "flight_key_99");
+
+    let id1 = client.reserve_seat(&passenger, &flight_id, &seat, &1_200, &idem_key);
+    let id2 = client.reserve_seat(&passenger, &flight_id, &seat, &1_200, &idem_key);
+
+    assert_eq!(id1, id2);
+    let booking = client.get_booking(&id1).unwrap();
+    assert_eq!(booking.booking_id, id1);
+    assert_eq!(booking.amount, 1_200);
+}
