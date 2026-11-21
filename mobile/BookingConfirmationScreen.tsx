@@ -38,6 +38,8 @@ interface BookingConfirmationProps {
   selfTransferExplanation?: string;
 }
 
+import { useState } from 'react';
+
 export default function BookingConfirmationScreen({
   bookingId,
   itinerary,
@@ -47,7 +49,16 @@ export default function BookingConfirmationScreen({
   onViewDashboard,
   selfTransferExplanation,
 }: BookingConfirmationProps) {
+  const [submitted, setSubmitted] = useState(false);
   const hasSelfTransfer = itinerary.some((seg) => seg.separateTicket === true);
+
+  const handleDashboardPress = () => {
+    if (submitted) return;
+    setSubmitted(true);
+    if (onViewDashboard) {
+      onViewDashboard();
+    }
+  };
 
   return (
     <div className="booking-confirmation-container">
@@ -118,8 +129,8 @@ export default function BookingConfirmationScreen({
           )}
         </div>
 
-        <button className="button" onClick={onViewDashboard}>
-          Go to Dashboard
+        <button className="button" disabled={submitted} onClick={handleDashboardPress}>
+          {submitted ? 'Processing...' : 'Go to Dashboard'}
         </button>
       </div>
     </div>
