@@ -127,9 +127,9 @@ impl BookingContract {
         BookingStorage::set_receipt_contract(&env, &receipt_contract);
     }
 
-    // Initialize booking - starts in "pending" status until paid
+    // Initialize booking idempotently using an idempotency key (or 0 if none) - starts in "pending" status until paid
     #[allow(clippy::too_many_arguments)]
-    pub fn create_booking(
+    pub fn create_booking_with_idempotency(
         env: Env,
         passenger: Address,
         airline: Address,
@@ -139,14 +139,22 @@ impl BookingContract {
         departure_time: u64,
         price: i128,
         token: Address,
+        idempotency_key: u64,
     ) -> u64 {
         passenger.require_auth();
+
+        if idempotency_key != 0 {
+            let key = (symbol_short!("idem"), passenger.clone(), idempotency_key);
+            if let Some(existing_booking_id) = env.storage().persistent().get::<_, u64>(&key) {
+                return existing_booking_id;
+            }
+        }
 
         let booking_id = BookingStorage::next_id(&env);
 
         let booking = Booking {
             booking_id,
-            passenger,
+            passenger: passenger.clone(),
             airline,
             flight_number,
             from_airport,
@@ -160,6 +168,11 @@ impl BookingContract {
         };
 
         BookingStorage::set(&env, booking_id, &booking);
+
+        if idempotency_key != 0 {
+            let key = (symbol_short!("idem"), passenger.clone(), idempotency_key);
+            env.storage().persistent().set(&key, &booking_id);
+        }
 
         // Canonical schema: (actor, timestamp, primary_id, ...payload)
         contract_events::emit(
@@ -177,6 +190,33 @@ impl BookingContract {
         );
 
         booking_id
+    }
+
+    // Initialize booking - starts in "pending" status until paid
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_booking(
+        env: Env,
+        passenger: Address,
+        airline: Address,
+        flight_number: Symbol,
+        from_airport: Symbol,
+        to_airport: Symbol,
+        departure_time: u64,
+        price: i128,
+        token: Address,
+    ) -> u64 {
+        Self::create_booking_with_idempotency(
+            env,
+            passenger,
+            airline,
+            flight_number,
+            from_airport,
+            to_airport,
+            departure_time,
+            price,
+            token,
+            0,
+        )
     }
 
     // Accept payment for the booking and hold in escrow
