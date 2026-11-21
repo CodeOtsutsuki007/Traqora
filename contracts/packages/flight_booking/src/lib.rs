@@ -29,6 +29,7 @@ pub struct Booking {
 enum DataKey {
     NextId,
     Booking(u64),
+    Idempotency(Symbol),
 }
 
 #[contract]
@@ -42,9 +43,17 @@ impl FlightBookingContract {
         flight_id: Symbol,
         seat: Symbol,
         amount: i128,
+        idempotency_key: Option<Symbol>,
     ) -> u64 {
         passenger.require_auth();
         assert!(amount > 0, "Invalid amount");
+
+        if let Some(ref key) = idempotency_key {
+            let id_key = DataKey::Idempotency(key.clone());
+            if let Some(existing_id) = env.storage().persistent().get::<_, u64>(&id_key) {
+                return existing_id;
+            }
+        }
 
         let seat_key = (symbol_short!("seat"), flight_id.clone(), seat.clone());
         if env.storage().persistent().has(&seat_key) {
@@ -72,6 +81,12 @@ impl FlightBookingContract {
         env.storage()
             .instance()
             .set(&DataKey::NextId, &(booking_id + 1));
+
+        if let Some(ref key) = idempotency_key {
+            env.storage()
+                .persistent()
+                .set(&DataKey::Idempotency(key.clone()), &booking_id);
+        }
 
         contract_events::emit(
             &env,

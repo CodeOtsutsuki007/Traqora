@@ -91,6 +91,14 @@ impl BookingStorage {
     }
 
     #[allow(clippy::too_many_arguments)]
+    pub fn get_by_idempotency(env: &Env, key: &Symbol) -> Option<u64> {
+        env.storage().persistent().get(key)
+    }
+
+    pub fn set_idempotency(env: &Env, key: &Symbol, booking_id: u64) {
+        env.storage().persistent().set(key, &booking_id);
+    }
+
     pub fn next_id(env: &Env) -> u64 {
         let id: u64 = env
             .storage()
@@ -139,10 +147,21 @@ impl BookingContract {
         departure_time: u64,
         price: i128,
         token: Address,
+        idempotency_key: Option<Symbol>,
     ) -> u64 {
         passenger.require_auth();
 
+        if let Some(ref key) = idempotency_key {
+            if let Some(existing_id) = BookingStorage::get_by_idempotency(&env, key) {
+                return existing_id;
+            }
+        }
+
         let booking_id = BookingStorage::next_id(&env);
+
+        if let Some(ref key) = idempotency_key {
+            BookingStorage::set_idempotency(&env, key, booking_id);
+        }
 
         let booking = Booking {
             booking_id,

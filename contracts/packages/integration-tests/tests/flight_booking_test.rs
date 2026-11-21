@@ -338,3 +338,24 @@ fn test_flight_booking_reconcile_reference_timeout_recovery() {
     let id2 = client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
     assert_eq!(id1, id2);
 }
+
+#[test]
+fn test_flight_booking_idempotent_creation() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let passenger = Address::generate(&env);
+    let contract_id = env.register(FlightBookingContract, ());
+    let client = FlightBookingContractClient::new(&env, &contract_id);
+
+    let flight_id = Symbol::new(&env, "FL_IDEMP");
+    let seat = Symbol::new(&env, "20A");
+    let idemp_key = Some(Symbol::new(&env, "flight_idemp_key_777"));
+
+    let id1 = client.reserve_seat(&passenger, &flight_id, &seat, &2_000, &idemp_key);
+    let id2 = client.reserve_seat(&passenger, &flight_id, &Symbol::new(&env, "20B"), &2_000, &idemp_key);
+
+    assert_eq!(id1, id2, "Repeated request with same idempotency key must return original booking ID");
+    
+    let booking = client.get_booking(&id1).unwrap();
+    assert_eq!(booking.seat, seat, "Should retain original seat assignment");
+}
