@@ -80,6 +80,14 @@ impl BookingStorage {
             .set(&symbol_short!("oracle"), oracle);
     }
 
+    pub fn get_booking_by_idempotency_key(env: &Env, key: &Symbol) -> Option<u64> {
+        env.storage().persistent().get(key)
+    }
+
+    pub fn set_idempotency_key(env: &Env, key: &Symbol, booking_id: u64) {
+        env.storage().persistent().set(key, &booking_id);
+    }
+
     pub fn get_receipt_contract(env: &Env) -> Option<Address> {
         env.storage().instance().get(&symbol_short!("receipt_c"))
     }
@@ -141,8 +149,74 @@ impl BookingContract {
         token: Address,
     ) -> u64 {
         passenger.require_auth();
+        Self::create_booking_with_key(
+            env,
+            passenger,
+            airline,
+            flight_number,
+            from_airport,
+            to_airport,
+            departure_time,
+            price,
+            token,
+            symbol_short!(""),
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_booking_with_idempotency(
+        env: Env,
+        passenger: Address,
+        airline: Address,
+        flight_number: Symbol,
+        from_airport: Symbol,
+        to_airport: Symbol,
+        departure_time: u64,
+        price: i128,
+        token: Address,
+        idempotency_key: Symbol,
+    ) -> u64 {
+        passenger.require_auth();
+        Self::create_booking_with_key(
+            env,
+            passenger,
+            airline,
+            flight_number,
+            from_airport,
+            to_airport,
+            departure_time,
+            price,
+            token,
+            idempotency_key,
+        )
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn create_booking_with_key(
+        env: Env,
+        passenger: Address,
+        airline: Address,
+        flight_number: Symbol,
+        from_airport: Symbol,
+        to_airport: Symbol,
+        departure_time: u64,
+        price: i128,
+        token: Address,
+        idempotency_key: Symbol,
+    ) -> u64 {
+        if idempotency_key != symbol_short!("") {
+            if let Some(existing_id) =
+                BookingStorage::get_booking_by_idempotency_key(&env, &idempotency_key)
+            {
+                return existing_id;
+            }
+        }
 
         let booking_id = BookingStorage::next_id(&env);
+
+        if idempotency_key != symbol_short!("") {
+            BookingStorage::set_idempotency_key(&env, &idempotency_key, booking_id);
+        }
 
         let booking = Booking {
             booking_id,

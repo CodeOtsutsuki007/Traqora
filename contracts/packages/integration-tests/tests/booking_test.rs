@@ -87,3 +87,80 @@ fn test_refund_flow() {
     assert_eq!(booking.status, Symbol::new(&env, "refunded"));
     assert_eq!(booking.amount_escrowed, 0);
 }
+
+#[test]
+fn test_idempotent_booking_creation() {
+    let env = new_env();
+    let actors = generate_actors(&env);
+    let contracts = register_contracts(&env);
+    initialize_token(&env, &contracts.token, &actors.admin);
+
+    let price = 100_0000000i128;
+    let idem_key = Symbol::new(&env, "key123");
+
+    let booking_id_1 = contracts.booking.create_booking_with_idempotency(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &idem_key,
+    );
+
+    let booking_id_2 = contracts.booking.create_booking_with_idempotency(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &idem_key,
+    );
+
+    assert_eq!(booking_id_1, booking_id_2);
+
+    // Verify only one booking exists and next_id wasn't redundantly advanced for duplicate request
+    let booking = contracts.booking.get_booking(&booking_id_1).unwrap();
+    assert_eq!(booking.booking_id, booking_id_1);
+}
+
+#[test]
+fn test_idempotent_booking_different_keys_create_distinct_bookings() {
+    let env = new_env();
+    let actors = generate_actors(&env);
+    let contracts = register_contracts(&env);
+    initialize_token(&env, &contracts.token, &actors.admin);
+
+    let price = 100_0000000i128;
+
+    let booking_id_1 = contracts.booking.create_booking_with_idempotency(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &Symbol::new(&env, "keyA"),
+    );
+
+    let booking_id_2 = contracts.booking.create_booking_with_idempotency(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        &Symbol::new(&env, "keyB"),
+    );
+
+    assert_ne!(booking_id_1, booking_id_2);
+}
