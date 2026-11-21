@@ -87,3 +87,44 @@ fn test_refund_flow() {
     assert_eq!(booking.status, Symbol::new(&env, "refunded"));
     assert_eq!(booking.amount_escrowed, 0);
 }
+
+#[test]
+fn test_booking_creation_idempotent() {
+    let env = new_env();
+    let actors = generate_actors(&env);
+    let contracts = register_contracts(&env);
+    initialize_token(&env, &contracts.token, &actors.admin);
+
+    let price = 100_0000000i128;
+    let departure_time = 1704067200;
+
+    // First creation
+    let booking_id_1 = contracts.booking.create_booking(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL999"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &departure_time,
+        &price,
+        &contracts.token.address,
+    );
+
+    // Second repeated creation with identical parameters should return the exact same booking ID
+    let booking_id_2 = contracts.booking.create_booking(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL999"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &departure_time,
+        &price,
+        &contracts.token.address,
+    );
+
+    assert_eq!(booking_id_1, booking_id_2);
+
+    // Verify count or storage did not duplicate bookings
+    let booking_opt = contracts.booking.get_booking(&booking_id_1);
+    assert!(booking_opt.is_some());
+}

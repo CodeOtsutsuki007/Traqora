@@ -142,6 +142,24 @@ impl BookingContract {
     ) -> u64 {
         passenger.require_auth();
 
+        // Idempotency check: if a booking with the same passenger, flight_number, and departure_time already exists, return its ID.
+        let count = env
+            .storage()
+            .instance()
+            .get::<Symbol, u64>(&Symbol::new(&env, "booking_count"))
+            .unwrap_or(0);
+        for id in 1..=count {
+            if let Some(existing) = get_booking(env.clone(), id) {
+                if existing.passenger == passenger
+                    && existing.flight_number == flight_number
+                    && existing.departure_time == departure_time
+                {
+                    return id;
+                }
+            }
+        }
+        passenger.require_auth();
+
         let booking_id = BookingStorage::next_id(&env);
 
         let booking = Booking {

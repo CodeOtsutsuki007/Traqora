@@ -118,7 +118,7 @@ export default function BookingConfirmationScreen({
           )}
         </div>
 
-        <button className="button" onClick={onViewDashboard}>
+        <button className="button" onClick={onViewDashboard} aria-busy="false">
           Go to Dashboard
         </button>
       </div>

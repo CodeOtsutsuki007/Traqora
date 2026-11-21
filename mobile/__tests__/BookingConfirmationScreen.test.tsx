@@ -12,6 +12,24 @@ describe('BookingConfirmationScreen', () => {
     },
   ];
 
+  it('prevents duplicate confirmation actions and handles submission state safely', async () => {
+    const onConfirm = jest.fn().mockImplementation(() => new Promise((resolve) => setTimeout(resolve, 100)));
+    render(
+      <BookingConfirmationScreen
+        bookingId="12345"
+        itinerary={sampleItinerary}
+        paymentStatus="pending"
+        totalAmount="$450.00"
+        onConfirm={onConfirm}
+      />
+    );
+    const confirmButton = screen.getByRole('button', { name: /confirm booking/i });
+    confirmButton.click();
+    confirmButton.click();
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+    expect(confirmButton).toBeDisabled();
+  });
+
   it('renders booking confirmation details correctly', () => {
     render(
       <BookingConfirmationScreen
