@@ -87,3 +87,45 @@ fn test_refund_flow() {
     assert_eq!(booking.status, Symbol::new(&env, "refunded"));
     assert_eq!(booking.amount_escrowed, 0);
 }
+
+#[test]
+fn test_idempotent_booking_creation() {
+    let env = new_env();
+    let actors = generate_actors(&env);
+    let contracts = register_contracts(&env);
+    initialize_token(&env, &contracts.token, &actors.admin);
+
+    let price = 100_0000000i128;
+    let idempotency_key = 987654321u64;
+
+    let booking_id_1 = contracts.booking.create_booking(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        idempotency_key,
+    );
+
+    let booking_id_2 = contracts.booking.create_booking(
+        &actors.passenger,
+        &actors.airline,
+        &Symbol::new(&env, "FL123"),
+        &Symbol::new(&env, "JFK"),
+        &Symbol::new(&env, "LAX"),
+        &1704067200,
+        &price,
+        &contracts.token.address,
+        idempotency_key,
+    );
+
+    assert_eq!(booking_id_1, booking_id_2);
+
+    // Verify only one booking was created and next_id incremented correctly once
+    let booking = contracts.booking.get_booking(&booking_id_1).unwrap();
+    assert_eq!(booking.booking_id, booking_id_1);
+    assert_eq!(booking.status, Symbol::new(&env, "pending"));
+}

@@ -330,11 +330,34 @@ fn test_flight_booking_reconcile_reference_timeout_recovery() {
     let seat = Symbol::new(&env, "15A");
     let request_ref = Symbol::new(&env, "timeout_ref_999");
 
-    let id1 = client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
+    let id1 =
+        client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
     let booking1 = client.get_booking(&id1).unwrap();
     assert_eq!(booking1.seat, seat);
 
     // Retry with same request ref after timeout should return the exact same booking id without duplicate reservation error
-    let id2 = client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
+    let id2 =
+        client.reconcile_booking_reference(&passenger, &flight_id, &seat, &1_500, &request_ref);
     assert_eq!(id1, id2);
+}
+
+#[test]
+fn test_flight_booking_idempotent_creation_with_key() {
+    let env = Env::default();
+    env.mock_all_auths();
+    let passenger = Address::generate(&env);
+    let contract_id = env.register(FlightBookingContract, ());
+    let client = FlightBookingContractClient::new(&env, &contract_id);
+
+    let flight_id = Symbol::new(&env, "FLIDEM");
+    let seat_1 = Symbol::new(&env, "20A");
+    let seat_2 = Symbol::new(&env, "20B");
+    let key = Symbol::new(&env, "idem_key_abc");
+
+    let id_1 = client.reserve_seat(&passenger, &flight_id, &seat_1, &1_000, &Some(key.clone()));
+    let id_2 = client.reserve_seat(&passenger, &flight_id, &seat_2, &1_000, &Some(key.clone()));
+
+    assert_eq!(id_1, id_2);
+    let booking = client.get_booking(&id_1).unwrap();
+    assert_eq!(booking.seat, seat_1);
 }

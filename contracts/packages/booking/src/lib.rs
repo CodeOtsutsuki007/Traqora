@@ -139,11 +139,23 @@ impl BookingContract {
         departure_time: u64,
         price: i128,
         token: Address,
+        idempotency_key: u64,
     ) -> u64 {
         passenger.require_auth();
 
-        let booking_id = BookingStorage::next_id(&env);
+        let id_key = symbol_short!("idem");
+        if let Some(existing_id) = env
+            .storage()
+            .persistent()
+            .get::<(Symbol, u64), u64>(&(id_key, idempotency_key))
+        {
+            return existing_id;
+        }
 
+        let booking_id = BookingStorage::next_id(&env);
+        env.storage()
+            .persistent()
+            .set(&(id_key, idempotency_key), &booking_id);
         let booking = Booking {
             booking_id,
             passenger,
